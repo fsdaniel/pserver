@@ -1,3 +1,4 @@
+#include <iostream>
 #include <sstream>
 
 #include "server.hpp"
@@ -76,9 +77,13 @@ void Server::Listen()
 	listener.async_accept(socket,
 		[this](boost::system::error_code ec)
 		{
-			if (!ec)
+			if (ec)
+				std::cerr << ec.message() << '\n';
+			else
 			{
 				auto c = std::make_shared<Connection>(std::move(socket));
+				std::cout << "Incoming connection from " <<
+					socket.remote_endpoint().address().to_string() << '\n';
 				SendID(c);
 			}
 			
@@ -88,7 +93,9 @@ void Server::Listen()
 
 void Server::Disconnect(std::uint32_t uid)
 {
-	// NOTE: should we care about socket errors?
+	std::cout << users[uid]->name << " disconnected.\n";
+
+	// NOTE: should we care about socket errors here?
 	users[uid]->socket.cancel();
 	users[uid]->socket.close();
 	users[uid].reset();
@@ -105,7 +112,10 @@ void Server::SendID(ConnectionPtr c)
 		[this, user, data](boost::system::error_code ec, std::size_t)
 		{
 			if (ec)
+			{
 				Disconnect(user->id);
+				std::cerr << ec.message() << '\n';
+			}
 			else
 			{
 				users.insert(UserID(last_user_id, user));
@@ -125,7 +135,10 @@ void Server::ReadHeader(ConnectionPtr c)
 		[this, user, data](boost::system::error_code ec, std::size_t)
 		{
 			if (ec)
+			{
 				Disconnect(user->id);
+				std::cerr << ec.message() << '\n';
+			}
 			else
 			{
 				std::uint32_t type = *(std::uint32_t*)data;
@@ -150,7 +163,10 @@ void Server::ReadLogin(ConnectionPtr c)
 		[this, user, data](boost::system::error_code ec, std::size_t)
 		{
 			if (ec)
+			{
 				Disconnect(user->id);
+				std::cerr << ec.message() << '\n';
+			}
 			else
 			{
 				std::istringstream iss(std::string(data, 128));
@@ -172,6 +188,8 @@ void Server::ReadLogin(ConnectionPtr c)
 				user->colour = std::rand() % NUM_COLORS;
 				user->status = 0; // TODO: determine from banlist and set appropriately
 				user->draw_state = DrawState::NONE;
+				
+				std::cout << user->name << " logged in.\n";
 				SendLoginReply(user, data);
 			}
 		});
@@ -188,7 +206,10 @@ void Server::SendLoginReply(ConnectionPtr c, char *data)
 		[this, user, buf](boost::system::error_code ec, std::size_t)
 		{
 			if (ec)
+			{
 				Disconnect(user->id);
+				std::cerr << ec.message() << '\n';
+			}
 			else
 				SendVersion(user);
 			delete[] buf;
@@ -205,7 +226,10 @@ void Server::SendVersion(ConnectionPtr c)
 		[this, user, data](boost::system::error_code ec, std::size_t)
 		{
 			if (ec)
+			{
 				Disconnect(user->id);
+				std::cerr << ec.message() << '\n';
+			}
 			else
 				SendServerInfo(user);
 			delete[] data;
@@ -234,7 +258,10 @@ void Server::SendServerInfo(ConnectionPtr c)
 		[this, user, buf](boost::system::error_code ec, std::size_t)
 		{
 			if (ec)
+			{
 				Disconnect(user->id);
+				std::cerr << ec.message() << '\n';
+			}
 			else
 				SendUserStatus(user);
 			delete[] buf;
@@ -251,7 +278,10 @@ void Server::SendUserStatus(ConnectionPtr c)
 		[this, user, data](boost::system::error_code ec, std::size_t)
 		{
 			if (ec)
+			{
 				Disconnect(user->id);
+				std::cerr << ec.message() << '\n';
+			}
 			else
 				NotifyNewLogin(user->id);
 			delete[] data;
@@ -271,7 +301,10 @@ void Server::NotifyNewLogin(std::uint32_t uid)
 			[this, user](boost::system::error_code ec, std::size_t)
 			{
 				if (ec)
+				{
 					Disconnect(user->id);
+					std::cerr << ec.message() << '\n';
+				}
 			});
 	}
 }
