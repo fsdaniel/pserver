@@ -1,28 +1,47 @@
-# Compiled Object files
-*.slo
+.directory
+.DS_Store
+*.a
+*.app
+*.appx
+*.bc
+*.cbp
+*.dll
+*.dsp
+*.dsw
+*.dylib
+*.exe
+*.filters
+*.framework
+*.gch
+*.ilk
+*.lastbuildstate
+*.lib
 *.lo
+*.manifest
+*.mo
 *.o
 *.obj
-
-# Precompiled Headers
-*.gch
+*.pbproj
+*.pbxproj
+*.pbxuser
 *.pch
-
-# Compiled Dynamic libraries
+*.pdb
+*.Plo
+*.Po
+*.res
+*.sln
 *.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
+*.suo
+*.Tlo
+*.tlog
+*.user
+*.vcproj
+*.vcxproj
+*.xcodeproj
+CMakeCache.txt
+CMakeFiles/
+config.status
+configure
+libtool
+Makefile
+Thumbs.db
