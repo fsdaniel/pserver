@@ -82,8 +82,6 @@ void Server::Listen()
 			else
 			{
 				auto c = std::make_shared<Connection>(std::move(socket));
-				std::cout << "Incoming connection from " <<
-					socket.remote_endpoint().address().to_string() << '\n';
 				SendID(c);
 			}
 			
@@ -118,6 +116,8 @@ void Server::SendID(ConnectionPtr c)
 			}
 			else
 			{
+				std::cout << "Incoming connection from " <<
+					user->socket.remote_endpoint().address().to_string() << '\n';
 				users.insert(UserID(last_user_id, user));
 				user->id = last_user_id;
 				ReadHeader(user);

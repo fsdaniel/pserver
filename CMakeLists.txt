@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.4)
 project(PServer)
 
-add_definitions("-std=gnu++14 -Wno-narrowing")
+if(${CMAKE_COMPILER_IS_GNUCXX})
+	add_definitions("-std=gnu++14 -Wno-narrowing")
+endif()
+
 find_package(Boost 1.60.0 REQUIRED COMPONENTS system)
 set(Boost_USE_STATIC_LIBS ON)
 set(Boost_USE_MULTITHREADED ON)
