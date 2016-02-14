@@ -1,4 +1,3 @@
-#include <iostream>
 #include <sstream>
 
 #include "server.hpp"
@@ -78,7 +77,7 @@ void Server::Listen()
 		[this](boost::system::error_code ec)
 		{
 			if (ec)
-				std::cerr << ec.message() << '\n';
+				Log(ec.message());
 			else
 			{
 				auto c = std::make_shared<Connection>(std::move(socket));
@@ -91,7 +90,7 @@ void Server::Listen()
 
 void Server::Disconnect(std::uint32_t uid)
 {
-	std::cout << users[uid]->name << " disconnected.\n";
+	Log(users[uid]->name + " disconnected.");
 
 	// NOTE: should we care about socket errors here?
 	users[uid]->socket.cancel();
@@ -112,12 +111,11 @@ void Server::SendID(ConnectionPtr c)
 			if (ec)
 			{
 				Disconnect(user->id);
-				std::cerr << ec.message() << '\n';
+				Log(ec.message());
 			}
 			else
 			{
-				std::cout << "Incoming connection from " <<
-					user->socket.remote_endpoint().address().to_string() << '\n';
+				Log("Incoming connection from " + user->socket.remote_endpoint().address().to_string());
 				users.insert(UserID(last_user_id, user));
 				user->id = last_user_id;
 				ReadHeader(user);
@@ -137,7 +135,7 @@ void Server::ReadHeader(ConnectionPtr c)
 			if (ec)
 			{
 				Disconnect(user->id);
-				std::cerr << ec.message() << '\n';
+				Log(ec.message());
 			}
 			else
 			{
@@ -165,7 +163,7 @@ void Server::ReadLogin(ConnectionPtr c)
 			if (ec)
 			{
 				Disconnect(user->id);
-				std::cerr << ec.message() << '\n';
+				Log(ec.message());
 			}
 			else
 			{
@@ -189,7 +187,7 @@ void Server::ReadLogin(ConnectionPtr c)
 				user->status = 0; // TODO: determine from banlist and set appropriately
 				user->draw_state = DrawState::NONE;
 				
-				std::cout << user->name << " logged in.\n";
+				Log(user->name + " logged in.");
 				SendLoginReply(user, data);
 			}
 		});
@@ -208,7 +206,7 @@ void Server::SendLoginReply(ConnectionPtr c, char *data)
 			if (ec)
 			{
 				Disconnect(user->id);
-				std::cerr << ec.message() << '\n';
+				Log(ec.message());
 			}
 			else
 				SendVersion(user);
@@ -228,7 +226,7 @@ void Server::SendVersion(ConnectionPtr c)
 			if (ec)
 			{
 				Disconnect(user->id);
-				std::cerr << ec.message() << '\n';
+				Log(ec.message());
 			}
 			else
 				SendServerInfo(user);
@@ -260,7 +258,7 @@ void Server::SendServerInfo(ConnectionPtr c)
 			if (ec)
 			{
 				Disconnect(user->id);
-				std::cerr << ec.message() << '\n';
+				Log(ec.message());
 			}
 			else
 				SendUserStatus(user);
@@ -280,7 +278,7 @@ void Server::SendUserStatus(ConnectionPtr c)
 			if (ec)
 			{
 				Disconnect(user->id);
-				std::cerr << ec.message() << '\n';
+				Log(ec.message());
 			}
 			else
 				NotifyNewLogin(user->id);
@@ -303,7 +301,7 @@ void Server::NotifyNewLogin(std::uint32_t uid)
 				if (ec)
 				{
 					Disconnect(user->id);
-					std::cerr << ec.message() << '\n';
+					Log(ec.message());
 				}
 			});
 	}

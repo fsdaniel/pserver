@@ -1,4 +1,8 @@
+#include <chrono>
 #include <cstring>
+#include <ctime>
+#include <iomanip>
+#include <iostream>
 
 #include "globals.hpp"
 
@@ -85,4 +89,15 @@ void Decode(char *buf, short len)
 		buf[i] = (char)(b ^ LUT[rc++] ^ last);
 		last = (char)(b ^ LUT[rc++]);
 	}
+}
+
+void Log(std::string txt)
+{
+	using namespace std::chrono;
+	
+	static std::time_t present;
+	present = system_clock::to_time_t(system_clock::now());
+	
+	std::cout << '[' << std::put_time(std::localtime(&present), "%D %T") << "]: " <<
+		txt << '\n';
 }

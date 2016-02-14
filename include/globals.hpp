@@ -129,5 +129,6 @@ typedef std::shared_ptr<Prop> PropPtr;
 
 void Encode(char*, short);
 void Decode(char*, short);
+void Log(std::string);
 
 #endif // _GLOBALS_H
