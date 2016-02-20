@@ -101,28 +101,35 @@ enum
 
 struct Message final
 {
-	char *data;
-	std::uint32_t type;
-	std::uint32_t size;
-	std::int32_t refnum;
+	std::string data;
+	uint32_t type, size;
+	int32_t refnum;
 	
-	const char* Serialise() const;
+	std::string Serialise();
 };
 
 struct Point final
 {
-	std::int16_t x, y;
+	int16_t x, y;
+	
+	uint32_t Serialise() const
+	{
+		return (static_cast<uint32_t>(x) << 16) | y;
+	}
 };
 
 // omit 'type' as the only value applicable is 0x50726F70 ('Prop')
 struct Prop final: std::enable_shared_from_this<Prop>
 {
-	char *data;
-	std::string name;
-	std::uint32_t id, crc, block_size, block_offs, flags, size;
-	std::uint16_t block_num, nblocks;
+	std::string name, data;
+	uint32_t id, crc, flags;
 	
 	void ComputeCRC();
+	
+	uint64_t SerialiseSpec() const
+	{
+		return (static_cast<uint64_t>(id) << 32) | crc;
+	}
 };
 
 typedef std::shared_ptr<Prop> PropPtr;

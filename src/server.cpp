@@ -1,12 +1,9 @@
+#include <cstdlib>
 #include <sstream>
 
 #include "server.hpp"
 
-static const char *CLIENT_TYPE[] = {
-	"32Bit Windows",
-	"Java",
-	"Unknown"
-};
+#include "room.cpp"
 
 // extended info flags
 enum
@@ -38,7 +35,6 @@ enum
 // misc and duplicates
 enum
 {
-	DLC_FILES_HTTPSRVR = 256,
 	VERSION = 0x10016,
 	INF_NAME = EXT_NAME,
 	INF_TYPE = EXT_TYPE
@@ -60,14 +56,24 @@ enum
 	PLAT_UNIX
 };
 
+static const char *CLIENT_TYPE[] = {
+	"32Bit Windows",
+	"Java",
+	"Unknown"
+};
+
+static Message SERVER_VERSION = { "", MSG_VERSION, 0, VERSION };
+
 Server::Server(boost::asio::io_service &io, const tcp::endpoint &ep):
 	listener(io, ep),
 	socket(io),
 	last_user_id(0),
 	perms(PM_DEFAULTS),
 	opts(SO_DEFAULTS),
-	name("test")
+	name("test"),
+	media_url("http://chat.epalacesmedia.com/")
 {
+	rooms[2] = new Room(2, this);
 	Listen();
 }
 
@@ -88,7 +94,7 @@ void Server::Listen()
 		});
 }
 
-void Server::Disconnect(std::uint32_t uid)
+void Server::Disconnect(int32_t uid)
 {
 	Log(users[uid]->name + " disconnected.");
 
@@ -101,52 +107,47 @@ void Server::Disconnect(std::uint32_t uid)
 
 void Server::SendID(ConnectionPtr c)
 {
-	auto user(c->shared_from_this());
-	Message msg = { nullptr, MSG_TIYID, 0, ++last_user_id };
-	const char *data = msg.Serialise();
+	Message msg = { "", MSG_TIYID, 0, ++last_user_id };
 	
-	boost::asio::async_write(user->socket, boost::asio::buffer(data, 12),
-		[this, user, data](boost::system::error_code ec, std::size_t)
+	boost::asio::async_write(c->socket, boost::asio::buffer(msg.Serialise(), 12),
+		[this, c](boost::system::error_code ec, size_t)
 		{
 			if (ec)
 			{
-				Disconnect(user->id);
+				Disconnect(c->id);
 				Log(ec.message());
 			}
 			else
 			{
-				Log("Incoming connection from " + user->socket.remote_endpoint().address().to_string());
-				users.insert(UserID(last_user_id, user));
-				user->id = last_user_id;
-				ReadHeader(user);
+				Log("Incoming connection from " + c->socket.remote_endpoint().address().to_string());
+				users[last_user_id] = c;
+				c->id = last_user_id;
+				ReadHeader(c);
 			}
-			delete[] data;
 		});
 }
 
 void Server::ReadHeader(ConnectionPtr c)
 {
-	auto user(c->shared_from_this());
-	char *data = new char[12];
+	char data[12];
 	
-	boost::asio::async_read(user->socket, boost::asio::buffer(data, 12),
-		[this, user, data](boost::system::error_code ec, std::size_t)
+	boost::asio::async_read(c->socket, boost::asio::buffer(data, 12),
+		[this, c, &data](boost::system::error_code ec, size_t)
 		{
 			if (ec)
 			{
-				Disconnect(user->id);
+				Disconnect(c->id);
 				Log(ec.message());
 			}
 			else
 			{
-				std::uint32_t type = *(std::uint32_t*)data;
-				std::uint32_t size = *(std::uint32_t*)(data+4);
-				std::int32_t refnum = *(std::int32_t*)(data+8);
-				delete[] data;
+				uint32_t type = *(reinterpret_cast<uint32_t*>(data));
+				uint32_t size = *(reinterpret_cast<uint32_t*>(data)+4);
+				int32_t refnum = *(reinterpret_cast<int32_t*>(data)+8);
 				
 				switch (type)
 				{
-					case MSG_LOGON: ReadLogin(user); break;
+					case MSG_LOGON: ReadLogin(c); break;
 				}
 			}
 		});
@@ -154,155 +155,160 @@ void Server::ReadHeader(ConnectionPtr c)
 
 void Server::ReadLogin(ConnectionPtr c)
 {
-	auto user(c->shared_from_this());
 	char *data = new char[128];
 	
-	boost::asio::async_read(user->socket, boost::asio::buffer(data, 128),
-		[this, user, data](boost::system::error_code ec, std::size_t)
+	boost::asio::async_read(c->socket, boost::asio::buffer(data, 128),
+		[this, c, data](boost::system::error_code ec, size_t)
 		{
 			if (ec)
 			{
-				Disconnect(user->id);
+				Disconnect(c->id);
 				Log(ec.message());
 			}
 			else
 			{
-				std::istringstream iss(std::string(data, 128));
-				char *str31 = new char[31];
+				std::istringstream iss(data);
+				char str31[31];
 				char slen;
 				
-				iss.seekg(9, iss.beg);  // skipping reg code and name length;
-				iss.read(str31, 31);
-				user->name = str31;
+				memset(&str31[0], 0, 31);
+				iss.seekg(8, iss.beg);  // skipping reg code
 				iss.read(&slen, 1);
-				iss.read(str31, 31);
-				user->pw = std::string(str31, slen);
-				delete[] str31;
-				iss.read((char*)&user->aux, 4);
+				iss.read(&str31[0], slen);
+				iss.seekg(31-slen, iss.cur);
+				c->name = str31;
+				iss.read(&slen, 1);
+				iss.read(&str31[0], slen);
+				iss.seekg(31-slen, iss.cur);
+				c->pw = std::string(str31, slen);
+				iss.read(reinterpret_cast<char*>(&c->aux), 4);
 				iss.seekg(20, iss.cur); // skip pseudo reg and demo stuff
-				iss.read((char*)&user->room, 2); // skip rest
+				//iss.read(reinterpret_cast<char*>(&c->room), 2); // skip rest
 				// TODO: read reserved[6] as 6-character client ID
-				user->face = std::rand() % NUM_FACES;
-				user->colour = std::rand() % NUM_COLORS;
-				user->status = 0; // TODO: determine from banlist and set appropriately
-				user->draw_state = DrawState::NONE;
+				c->room = 2;
+				c->face = rand() % NUM_FACES;
+				c->colour = rand() % NUM_COLORS;
+				c->status = 0; // TODO: determine from banlist and set appropriately
+				c->draw_state = DrawState::NONE;
 				
-				Log(user->name + " logged in.");
-				SendLoginReply(user, data);
+				Log(c->name + " logged in.");
+				SendLoginReply(c, data);
 			}
 		});
 }
 
 void Server::SendLoginReply(ConnectionPtr c, char *data)
 {
-	auto user(c->shared_from_this());
-	Message msg = { data, MSG_ALTLOGONREPLY, 128, user->id };
-	const char *buf = msg.Serialise();
-	
+	Message msg = { std::string(data, 128), MSG_ALTLOGONREPLY, 128, c->id };
 	delete[] data;
-	boost::asio::async_write(user->socket, boost::asio::buffer(buf, 140),
-		[this, user, buf](boost::system::error_code ec, std::size_t)
+	
+	boost::asio::async_write(c->socket, boost::asio::buffer(msg.Serialise(), 140),
+		[this, c](boost::system::error_code ec, size_t)
 		{
 			if (ec)
 			{
-				Disconnect(user->id);
+				Disconnect(c->id);
 				Log(ec.message());
 			}
 			else
-				SendVersion(user);
-			delete[] buf;
+				SendVersion(c);
 		});
 }
 
 void Server::SendVersion(ConnectionPtr c)
 {
-	auto user(c->shared_from_this());
-	Message msg = { nullptr, MSG_VERSION, 0, VERSION };
-	const char *data = msg.Serialise();
-	
-	boost::asio::async_write(user->socket, boost::asio::buffer(data, 12),
-		[this, user, data](boost::system::error_code ec, std::size_t)
+	boost::asio::async_write(c->socket, boost::asio::buffer(SERVER_VERSION.Serialise(), 12),
+		[this, c](boost::system::error_code ec, size_t)
 		{
 			if (ec)
 			{
-				Disconnect(user->id);
+				Disconnect(c->id);
 				Log(ec.message());
 			}
 			else
-				SendServerInfo(user);
-			delete[] data;
+				SendServerInfo(c);
 		});
 }
 
 void Server::SendServerInfo(ConnectionPtr c)
 {
-	auto user(c->shared_from_this());
 	std::ostringstream oss;
 	char l = name.size();
 	
 	oss.seekp(0, oss.beg);
-	oss.write((char*)&perms, 4);
+	oss.write(reinterpret_cast<char*>(&perms), 4);
 	oss.write(&l, 1);
 	oss.write(name.data(), l);
 	// NOTE: according to packet sniffing, opts + dl/ul caps not sent?
 	
-	char *data = new char[oss.str().size()];
-	std::memmove(data, oss.str().data(), oss.str().size());
-	Message msg = { data, MSG_SERVERINFO, oss.str().size(), user->id };
-	const char *buf = msg.Serialise();
-	delete[] data;
+	Message msg = { oss.str(), MSG_SERVERINFO, static_cast<uint32_t>(oss.str().size()), c->id };
 	
-	boost::asio::async_write(user->socket, boost::asio::buffer(buf, msg.size+12),
-		[this, user, buf](boost::system::error_code ec, std::size_t)
+	boost::asio::async_write(c->socket, boost::asio::buffer(msg.Serialise(), msg.size+12),
+		[this, c](boost::system::error_code ec, size_t)
 		{
 			if (ec)
 			{
-				Disconnect(user->id);
+				Disconnect(c->id);
 				Log(ec.message());
 			}
 			else
-				SendUserStatus(user);
-			delete[] buf;
+				SendUserStatus(c);
 		});
 }
 
 void Server::SendUserStatus(ConnectionPtr c)
 {
-	auto user(c->shared_from_this());
-	Message msg = { (char*)&user->status, MSG_USERSTATUS, 2, user->id };
-	const char *data = msg.Serialise();
+	Message msg = { std::string(reinterpret_cast<char*>(&c->status), 2), MSG_USERSTATUS, 2, c->id };
 	
-	boost::asio::async_write(user->socket, boost::asio::buffer(data, 14),
-		[this, user, data](boost::system::error_code ec, std::size_t)
+	boost::asio::async_write(c->socket, boost::asio::buffer(msg.Serialise(), 14),
+		[this, c](boost::system::error_code ec, size_t)
 		{
 			if (ec)
 			{
-				Disconnect(user->id);
+				Disconnect(c->id);
 				Log(ec.message());
 			}
 			else
-				NotifyNewLogin(user->id);
-			delete[] data;
+				NotifyNewLogin(c);
 		});
 }
 
-void Server::NotifyNewLogin(std::uint32_t uid)
+void Server::NotifyNewLogin(const ConnectionPtr c)
 {
-	std::uint32_t nusers = users.size();
-	Message msg = { (char*)&nusers, MSG_USERLOG, 4, uid };
-	std::string data(msg.Serialise(), 16);
+	uint32_t nusers = users.size();
+	Message msg = { std::string(reinterpret_cast<char*>(&nusers), 4), MSG_USERLOG, 4, c->id };
 	
 	for (auto u: users)
 	{
-		auto user = std::get<1>(u)->shared_from_this();
-		boost::asio::async_write(user->socket, boost::asio::buffer(data, 16),
-			[this, user](boost::system::error_code ec, std::size_t)
+		auto user = std::get<1>(u);
+		boost::asio::async_write(user->socket, boost::asio::buffer(msg.Serialise(), 16),
+			[this, user, c](boost::system::error_code ec, size_t)
 			{
 				if (ec)
 				{
 					Disconnect(user->id);
 					Log(ec.message());
 				}
+				else
+					if (user->id == c->id)
+						SendMediaURL(user);
 			});
 	}
+}
+
+void Server::SendMediaURL(ConnectionPtr c)
+{
+	Message msg = { media_url, MSG_HTTPSERVER, static_cast<uint32_t>(media_url.size())+1, c->id };
+	
+	boost::asio::async_write(c->socket, boost::asio::buffer(msg.Serialise(), msg.size),
+		[this, c](boost::system::error_code ec, size_t)
+		{
+			if (ec)
+			{
+				Disconnect(c->id);
+				Log(ec.message());
+			}
+		else
+			rooms[c->room]->SendDescription(c, false);
+		});
 }

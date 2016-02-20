@@ -99,17 +99,20 @@ enum class DrawState: char
 
 struct Connection final: std::enable_shared_from_this<Connection>
 {
-	Connection(tcp::socket s): socket(std::move(s)) {}
-	
+	PropPtr props[9];
 	tcp::socket socket;
 	std::string name, pw;
 	Point pos;
-	std::uint32_t aux, id;
-	std::uint16_t status, room, face, colour;
+	uint32_t aux;
+	int32_t id;
+	uint16_t status, room, face, colour;
 	DrawState draw_state;
+	
+	Connection(tcp::socket s): socket(std::move(s)) {}
+	std::string Serialise(bool);
 };
 
 typedef std::shared_ptr<Connection> ConnectionPtr;
-typedef std::pair<std::uint32_t, ConnectionPtr> UserID;
+typedef std::pair<int32_t, ConnectionPtr> UserID;
 
 #endif // _CONNECTION_H

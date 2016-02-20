@@ -8,7 +8,7 @@
 
 int main(int argc, char **argv)
 {
-	std::srand(std::time(nullptr));
+	srand(time(nullptr));
 	
 	try
 	{

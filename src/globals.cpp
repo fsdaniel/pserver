@@ -1,8 +1,8 @@
 #include <chrono>
-#include <cstring>
 #include <ctime>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 
 #include "globals.hpp"
 
@@ -46,22 +46,23 @@ static const short LUT[512] = {
 	0x62, 0x91, 0xDF, 0x13, 0x22, 0xB9
 };
 
-const char* Message::Serialise() const
+std::string Message::Serialise()
 {
-	char *out = new char[size+12];
-	std::memmove(out, &type, 4);
-	std::memmove(out+4, &size, 4);
-	std::memmove(out+8, &refnum, 4);
-	if (size) std::memmove(out+12, data, size);
-	return out;
+	std::ostringstream oss;
+	oss.seekp(0, oss.beg);
+	oss.write(reinterpret_cast<char*>(&type), 4);
+	oss.write(reinterpret_cast<char*>(&size), 4);
+	oss.write(reinterpret_cast<char*>(&refnum), 4);
+	if (size) oss.write(data.data(), data.size());
+	return oss.str();
 }
 
 void Prop::ComputeCRC()
 {
 	crc = 0xD9216290;
-	if (!size) return;
+	if (!data.size()) return;
 	
-	for (unsigned i = 0; i < size; i++)
+	for (unsigned i = 0; i < data.size(); i++)
 		crc = ((crc << 1) | ((crc & 0x80000000) ? 1 : 0)) ^ data[i];
 }
 
@@ -73,8 +74,8 @@ void Encode(char *buf, short len)
 	for (short i = len-1; i >= 0; i--)
 	{
 		b = buf[i];
-		buf[i] = (char)(b ^ LUT[rc++] ^ last);
-		last = (char)(buf[i] ^ LUT[rc++]);
+		buf[i] = static_cast<char>(b ^ LUT[rc++] ^ last);
+		last = static_cast<char>(buf[i] ^ LUT[rc++]);
 	}
 }
 
@@ -86,8 +87,8 @@ void Decode(char *buf, short len)
 	for (short i = len-1; i >= 0; i--)
 	{
 		b = buf[i];
-		buf[i] = (char)(b ^ LUT[rc++] ^ last);
-		last = (char)(b ^ LUT[rc++]);
+		buf[i] = static_cast<char>(b ^ LUT[rc++] ^ last);
+		last = static_cast<char>(b ^ LUT[rc++]);
 	}
 }
 
@@ -95,9 +96,8 @@ void Log(std::string txt)
 {
 	using namespace std::chrono;
 	
-	static std::time_t present;
+	static time_t present;
 	present = system_clock::to_time_t(system_clock::now());
 	
-	std::cout << '[' << std::put_time(std::localtime(&present), "%D %T") << "]: " <<
-		txt << '\n';
+	std::cout << '[' << std::put_time(localtime(&present), "%D %T") << "]: " << txt << '\n';
 }
