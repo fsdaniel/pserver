@@ -38,13 +38,30 @@ void Room::Join(ConnectionPtr c)
 
 void Room::SendDescription(ConnectionPtr c, bool updated)
 {
+	std::ostringstream oss, ulists;
+
 	std::string desc = Serialise(true);
-	Message msg = { desc, MSG_ROOMSETDESC, static_cast<uint32_t>(desc.size()), 0 };
+	Message rdesc = { desc, MSG_ROOMDESC, static_cast<uint32_t>(desc.size()), 0 };
+	if (updated) rdesc.type = MSG_ROOMSETDESC;
+	
+	ulists.seekp(0, ulists.beg);
+	for (auto u: users)
+	{
+		std::string s = u->Serialise(true);
+		ulists.write(s.data(), s.size());
+	}
+	Message rprs = { ulists.str(), MSG_USERLIST, static_cast<uint32_t>(ulists.str().size()),
+		static_cast<int32_t>(users.size()) };
+	
+	oss.seekp(0, oss.beg);
+	oss.write(rdesc.Serialise().data(), rdesc.size+12);
+	oss.write(rprs.Serialise().data(), rprs.size+12);
+	oss.write(DESC_END.Serialise().data(), 12);
 	
 	if (updated)
 		for (auto u: users)
 		{
-			boost::asio::async_write(u->socket, boost::asio::buffer(msg.Serialise(), msg.size),
+			boost::asio::async_write(u->socket, boost::asio::buffer(oss.str(), oss.tellp()),
 				[this, u](boost::system::error_code ec, size_t)
 				{
 					if (ec)
@@ -52,14 +69,11 @@ void Room::SendDescription(ConnectionPtr c, bool updated)
 						owner->Disconnect(u->id);
 						Log(ec.message());
 					}
-					else
-						SendRoomDescEnd(u, false);
 				});
 		}
 	else
 	{
-		msg.type = MSG_ROOMDESC;
-		boost::asio::async_write(c->socket, boost::asio::buffer(msg.Serialise(), msg.size),
+		boost::asio::async_write(c->socket, boost::asio::buffer(oss.str(), oss.tellp()),
 			[this, c](boost::system::error_code ec, size_t)
 			{
 				if (ec)
@@ -68,51 +82,9 @@ void Room::SendDescription(ConnectionPtr c, bool updated)
 					Log(ec.message());
 				}
 				else
-					SendUserList(c);
+					Join(c);
 			});
 	}
-}
-
-void Room::SendUserList(ConnectionPtr c)
-{
-	std::ostringstream oss;
-	
-	oss.seekp(0, oss.beg);
-	for (auto u: users)
-	{
-		std::string s = u->Serialise(true);
-		oss.write(s.data(), s.size());
-	}
-	
-	Message msg = { oss.str(), MSG_USERLIST, static_cast<uint32_t>(oss.str().size()),
-		static_cast<int32_t>(users.size()) };
-	
-	boost::asio::async_write(c->socket, boost::asio::buffer(msg.Serialise(), msg.size),
-		[this, c](boost::system::error_code ec, size_t)
-		{
-			if (ec)
-			{
-				owner->Disconnect(c->id);
-				Log(ec.message());
-			}
-			else
-				SendRoomDescEnd(c, users.find(c) == users.end() ? true : false);
-		});
-}
-
-void Room::SendRoomDescEnd(ConnectionPtr c, bool newcomer)
-{
-	boost::asio::async_write(c->socket, boost::asio::buffer(DESC_END.Serialise(), 12),
-		[this, c, &newcomer](boost::system::error_code ec, size_t)
-		{
-			if (ec)
-			{
-				owner->Disconnect(c->id);
-				Log(ec.message());
-			}
-			else
-				if (newcomer) Join(c);
-		});
 }
 
 std::string SpotState::Serialise()

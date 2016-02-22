@@ -199,68 +199,30 @@ void Server::ReadLogin(ConnectionPtr c)
 
 void Server::SendLoginReply(ConnectionPtr c, char *data)
 {
-	Message msg = { std::string(data, 128), MSG_ALTLOGONREPLY, 128, c->id };
+	std::ostringstream oss, sinfs;
+	
+	Message rep2 = { std::string(data, 128), MSG_ALTLOGONREPLY, 128, c->id };
 	delete[] data;
 	
-	boost::asio::async_write(c->socket, boost::asio::buffer(msg.Serialise(), 140),
-		[this, c](boost::system::error_code ec, size_t)
-		{
-			if (ec)
-			{
-				Disconnect(c->id);
-				Log(ec.message());
-			}
-			else
-				SendVersion(c);
-		});
-}
-
-void Server::SendVersion(ConnectionPtr c)
-{
-	boost::asio::async_write(c->socket, boost::asio::buffer(SERVER_VERSION.Serialise(), 12),
-		[this, c](boost::system::error_code ec, size_t)
-		{
-			if (ec)
-			{
-				Disconnect(c->id);
-				Log(ec.message());
-			}
-			else
-				SendServerInfo(c);
-		});
-}
-
-void Server::SendServerInfo(ConnectionPtr c)
-{
-	std::ostringstream oss;
 	char l = name.size();
+	sinfs.seekp(0, sinfs.beg);
+	sinfs.write(reinterpret_cast<char*>(&perms), 4);
+	sinfs.write(&l, 1);
+	sinfs.write(name.data(), l);
+	// NOTE: according to packet sniffing, opts + dl/ul caps not sent?
+	Message sinf = { sinfs.str(), MSG_SERVERINFO, static_cast<uint32_t>(sinfs.str().size()), c->id };
+	
+	Message usta = { std::string(reinterpret_cast<char*>(&c->status), 2), MSG_USERSTATUS, 2, c->id };
+	Message http = { media_url, MSG_HTTPSERVER, static_cast<uint32_t>(media_url.size())+1, c->id };
 	
 	oss.seekp(0, oss.beg);
-	oss.write(reinterpret_cast<char*>(&perms), 4);
-	oss.write(&l, 1);
-	oss.write(name.data(), l);
-	// NOTE: according to packet sniffing, opts + dl/ul caps not sent?
+	oss.write(rep2.Serialise().data(), 140);
+	oss.write(SERVER_VERSION.Serialise().data(), 12);
+	oss.write(sinf.Serialise().data(), sinf.size+12);
+	oss.write(usta.Serialise().data(), 14);
+	oss.write(http.Serialise().data(), http.size+12);
 	
-	Message msg = { oss.str(), MSG_SERVERINFO, static_cast<uint32_t>(oss.str().size()), c->id };
-	
-	boost::asio::async_write(c->socket, boost::asio::buffer(msg.Serialise(), msg.size+12),
-		[this, c](boost::system::error_code ec, size_t)
-		{
-			if (ec)
-			{
-				Disconnect(c->id);
-				Log(ec.message());
-			}
-			else
-				SendUserStatus(c);
-		});
-}
-
-void Server::SendUserStatus(ConnectionPtr c)
-{
-	Message msg = { std::string(reinterpret_cast<char*>(&c->status), 2), MSG_USERSTATUS, 2, c->id };
-	
-	boost::asio::async_write(c->socket, boost::asio::buffer(msg.Serialise(), 14),
+	boost::asio::async_write(c->socket, boost::asio::buffer(oss.str(), oss.tellp()),
 		[this, c](boost::system::error_code ec, size_t)
 		{
 			if (ec)
@@ -291,24 +253,7 @@ void Server::NotifyNewLogin(const ConnectionPtr c)
 				}
 				else
 					if (user->id == c->id)
-						SendMediaURL(user);
+						rooms[user->room]->SendDescription(user, false);
 			});
 	}
-}
-
-void Server::SendMediaURL(ConnectionPtr c)
-{
-	Message msg = { media_url, MSG_HTTPSERVER, static_cast<uint32_t>(media_url.size())+1, c->id };
-	
-	boost::asio::async_write(c->socket, boost::asio::buffer(msg.Serialise(), msg.size),
-		[this, c](boost::system::error_code ec, size_t)
-		{
-			if (ec)
-			{
-				Disconnect(c->id);
-				Log(ec.message());
-			}
-		else
-			rooms[c->room]->SendDescription(c, false);
-		});
 }

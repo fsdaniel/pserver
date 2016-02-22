@@ -155,8 +155,6 @@ public:
 	int TotalPoints() const;
 	int TotalStates() const;
 	void SendDescription(ConnectionPtr, bool);
-	void SendUserList(ConnectionPtr);
-	void SendRoomDescEnd(ConnectionPtr, bool);
 private:
 	std::vector<Image> imgs;
 	std::set<ConnectionPtr> users;
@@ -182,11 +180,7 @@ private:
 	void ReadHeader(ConnectionPtr);
 	void ReadLogin(ConnectionPtr);
 	void SendLoginReply(ConnectionPtr, char*);
-	void SendVersion(ConnectionPtr);
-	void SendServerInfo(ConnectionPtr);
-	void SendUserStatus(ConnectionPtr);
 	void NotifyNewLogin(const ConnectionPtr);
-	void SendMediaURL(ConnectionPtr);
 	
 	std::map<int32_t, ConnectionPtr> users;
 	std::map<int16_t, Room*> rooms;
